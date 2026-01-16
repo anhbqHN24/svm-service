@@ -18,7 +18,7 @@ func main() {
 
 	// 3. Define Routes
 	http.HandleFunc("GET /read/{address}", server.HandleGetAccount)
-	http.HandleFunc("/write", server.HandleCreateData)
+	http.HandleFunc("/write", server.HandleCreateAccount)
 	http.HandleFunc("/execute", server.HandleInteract)
 
 	// 4. Start

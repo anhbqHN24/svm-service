@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"svm_whiteboard/helper"
 	"svm_whiteboard/internal/core"
+	"svm_whiteboard/internal/program"
 	"svm_whiteboard/internal/runtime"
 
 	"github.com/labyla/borsh-go"
@@ -40,7 +41,7 @@ func (s *Server) HandleGetAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /write (Tạo Account)
-func (s *Server) HandleCreateData(w http.ResponseWriter, r *http.Request) {
+func (s *Server) HandleCreateAccount(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -53,6 +54,13 @@ func (s *Server) HandleCreateData(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	progAcc, ok := s.SVMLedger.GetAccount(core.Pubkey(req.OwnerID))
+	// in Solana, owner field must be executable program Account
+	if !ok || !progAcc.Executable {
+		json.NewEncoder(w).Encode(APIResponse{Status: "error", Message: "Invalid Owner Address"})
 		return
 	}
 
@@ -103,13 +111,15 @@ func (s *Server) HandleInteract(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vm := core.NewVM(progAcc.Data, req.Params.Param1, req.Params.Param2)
-	logs := vm.Run()
+	// Load data into VM
+	vm := program.NewVM(progAcc.Data, req.Params.Param1, req.Params.Param2)
+	// Run compiler to execute program logic (similar to smart contract)
+	logs := vm.RunComplier()
 
 	response := map[string]interface{}{
 		"Account":      req.Address,
 		"logs":         logs,
-		"final_result": vm.R1, // Trả về giá trị cuối cùng của R1
+		"final_result": vm.R1, // return the final result
 	}
 	w.Header().Set("Content-Type", "application/json")
 
