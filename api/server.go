@@ -111,17 +111,25 @@ func (s *Server) HandleInteract(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Load data into VM
-	vm := program.NewVM(progAcc.Data, req.Params.Param1, req.Params.Param2)
-	// Run compiler to execute program logic (similar to smart contract)
-	logs := vm.RunComplier()
+	vm := program.NewVM(progAcc.Data)
+
+	// Load đúng 2 params từ struct vào R0, R1
+	if err := program.LoadStrictParams(vm, req.Params.Param1, req.Params.Param2); err != nil {
+		http.Error(w, "Input Error: "+err.Error(), 400)
+		return
+	}
+
+	// 4. Run VM program execution & Return logs
+	logs, err := vm.Run()
 
 	response := map[string]interface{}{
-		"Account":      req.Address,
-		"logs":         logs,
-		"final_result": vm.R1, // return the final result
+		"Account":        req.Address,
+		"logs":           logs,
+		"final_register": vm.Registers, // return the final result
 	}
-	w.Header().Set("Content-Type", "application/json")
-
+	if err != nil {
+		http.Error(w, "Error: "+err.Error(), 400)
+		return
+	}
 	json.NewEncoder(w).Encode(APIResponse{Status: "success", Message: "Tx Finalized", Data: response})
 }

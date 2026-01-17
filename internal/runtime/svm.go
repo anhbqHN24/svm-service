@@ -46,13 +46,10 @@ func (svm *SVMLedger) InitGenesisAccount() {
 		Key:        AccAddress,
 		Owner:      core.BPFLoaderID, // Program belong to Loader
 		Executable: true,
-		Data: []byte{
-			core.OP_ADD, 0,
-			core.OP_PRINT, 0,
-			core.OP_LOAD_2, 50,
-			core.OP_ADD, 0,
-			core.OP_PRINT, 0,
-			core.OP_HALT, 0,
+		Data: []byte{ // Simple Addition of 2 param
+			core.OP_ADD, 0, 1, // ADD R0, R1
+			core.OP_PRINT_INT, 0, 0, // PRINT_INT R0
+			core.OP_HALT, 0, 0, // HALT
 		},
 	}
 	svm.SetAccount(progAcc)
