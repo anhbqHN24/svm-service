@@ -9,8 +9,8 @@
 🔗 **Slides:** [Project Introduction Slideshow](https://docs.google.com/presentation/d/1ltbNwZAnafnMy9UtMbuVjRLkNS0z7ARLzaD6FXHyi8Y/view?usp=sharing)
 
 ## 🏗 Architecture
+<img width="1229" height="687" alt="SVM Whiteboard Architecture Diagram" src="https://github.com/user-attachments/assets/72b49381-56f4-48be-9fac-f408556ddbe8" />
 
-![Architecture Diagram](https://drive.google.com/file/d/13fUoZKP6mkAdkKC2tZ2-eONd8zrZ4Ctk)
 
 The project follows a simple structure:
 
