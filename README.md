@@ -10,7 +10,7 @@
 
 ## 🏗 Architecture
 
-![Architecture Diagram](https://drive.google.com/file/d/13fUoZKP6mkAdkKC2tZ2-eONd8zrZ4Ctk/view?usp=sharing)
+![Architecture Diagram](https://drive.google.com/file/d/13fUoZKP6mkAdkKC2tZ2-eONd8zrZ4Ctk)
 
 The project follows a simple structure:
 
@@ -39,11 +39,11 @@ The project follows a simple structure:
     ```Bash
     go run cmd/server.go
     ```
-Server runs on port :9924
+Server runs on port ```:9924```
 
 ## 📖 How to Use
 1. **Read an Account (GET)**
-Check the terminal logs for the Genesis Account Structure after starting the server.
+Get Account State (JSON object containing Account metadata) from Account Address
     ```Bash
     curl http://localhost:9924/read/{GENESIS_ACCOUNT_ADDRESS}
     ```
@@ -65,7 +65,7 @@ Run the program you just created.
     curl -X POST http://localhost:9924/execute \
      -H "Content-Type: application/json" \
      -d '{
-           "address": "{YOUR_PROGRAM_ADDRESS}",
+           "address": "{YOUR_PROGRAM_ACCOUNT_ADDRESS}",
            "params": {
              "param_1": 10,
              "param_2": 20
