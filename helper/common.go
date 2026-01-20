@@ -3,8 +3,10 @@ package helper
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"math/big"
+	"net/http"
 )
 
 const base58Alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
@@ -62,4 +64,14 @@ func ConvertToBytes(input interface{}) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("unsupported data type")
 	}
+}
+
+func GetBodyInput[T any](r *http.Request) (T, error) {
+	var inputType T
+
+	if err := json.NewDecoder(r.Body).Decode(&inputType); err != nil {
+		return inputType, err
+	}
+
+	return inputType, nil
 }

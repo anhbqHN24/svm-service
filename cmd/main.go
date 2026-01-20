@@ -4,21 +4,21 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"svm_whiteboard/api"
-	"svm_whiteboard/internal/runtime"
+	"svm_whiteboard/app"
+	"svm_whiteboard/runtime"
 )
 
 func main() {
 	// 1. Init Runtime (Engine)
-	svmLedger := runtime.NewSVMLedger()
-	svmLedger.InitGenesisAccount()
+	SVMMemoryManager := runtime.NewSVMMemoryManager()
+	SVMMemoryManager.InitGenesisAccount()
 
 	// 2. Init Server (API Layer)
-	server := &api.Server{SVMLedger: svmLedger}
+	server := &app.Server{SVMMemoryManager: SVMMemoryManager}
 
 	// 3. Define Routes
 	http.HandleFunc("GET /read/{address}", server.HandleGetAccount)
-	http.HandleFunc("/write", server.HandleCreateAccount)
+	http.HandleFunc("/write", server.HandleWriteAccount)
 	http.HandleFunc("/execute", server.HandleInteract)
 
 	// 4. Start
