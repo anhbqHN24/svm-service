@@ -9,16 +9,16 @@
 🔗 **Slides:** [Project Introduction Slideshow](https://docs.google.com/presentation/d/1ltbNwZAnafnMy9UtMbuVjRLkNS0z7ARLzaD6FXHyi8Y/view?usp=sharing)
 
 ## 🏗 Architecture
+<img width="1236" height="755" alt="Screenshot 2026-01-20 at 8 24 33 PM" src="https://github.com/user-attachments/assets/88a10191-5e11-4434-8558-efee1f997407" />
 
-![Architecture Diagram](https://drive.google.com/file/d/13fUoZKP6mkAdkKC2tZ2-eONd8zrZ4Ctk/view?usp=sharing)
 
 The project follows a simple structure:
 
 - **`cmd/`**: Main entry point to start the server.
-- **`api/`**: Handles HTTP requests (read, write, execute).
-- **`internal/runtime/`**: Manages the Memory and Accounts (VM In-memory like simulation).
-- **`internal/program/`**: The Virtual Machine (VM) that runs bytecode.
-- **`internal/core/`**: Basic model definitions (Opcodes, Account types, etc,...).
+- **`app/api/`**: Handles HTTP requests (read, write, execute).
+- **`runtime/`**: Manages the Memory and Accounts (VM In-memory like simulation).
+- **`app/program/`**: The Virtual Machine (VM) that runs bytecode.
+- **`app/core/`**: Basic model definitions (Opcodes, Account types, etc,...).
 
 ## 🚀 How to Run
 
@@ -48,24 +48,27 @@ Check the terminal logs for the Genesis Account Structure after starting the ser
     curl http://localhost:9924/read/{GENESIS_ACCOUNT_ADDRESS}
     ```
 2. **Create an Account (POST)**
-Deploy a new program or data Account.
+Create & Deploy a new program or data Account.
     ```Bash
     curl -X POST http://localhost:9924/write \
      -H "Content-Type: application/json" \
      -d '{
-           "owner": "FXN5zkuahwowMnvQPt8Z94ybcjrT4NVQNtVmKeUfRGPr",
+           "owner": {PROGRAM_ACCOUNT_ADDRESS},
            "executable": true,
            "data": [1, 2, 0, 16, 0, 1, 238, 0, 0, 255, 0, 0]
          }'
     ```
 
 3. **Execute a Program (POST)**
-Run the program you just created.
+Run the program you just created. This action will be divided into two cases, depending on the involvement of the "data_addr" variable in the request BODY :
+- included: binary execution will take data of Data Account as one of the parameter & param_1 as the other -> update the Account data (```Account state``` in Solana)
+- not included: binary execution will take 2 param from "params" variable inside request BODY -> run the code as normal.
     ```Bash
     curl -X POST http://localhost:9924/execute \
      -H "Content-Type: application/json" \
      -d '{
-           "address": "{YOUR_PROGRAM_ACCOUNT_ADDRESS}",
+           "prog_addr": "{YOUR_PROGRAM_ACCOUNT_ADDRESS}",
+           "data_addr": "{YOUR_DATA_ACCOUNT_ADDRESS}",
            "params": {
              "param_1": 10,
              "param_2": 20
