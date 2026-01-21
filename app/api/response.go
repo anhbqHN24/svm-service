@@ -2,21 +2,20 @@ package api
 
 import (
 	"encoding/json"
+	"maps"
 	"net/http"
 	"svm_whiteboard/app/dto"
 )
 
-// Helper to send JSON success
+// Helper to write JSON response
 func WriteResponseJSON(w http.ResponseWriter, status int, data any, headers http.Header) error {
 	js, err := json.Marshal(data)
 	if err != nil {
 		return err
 	}
 
-	// Thêm custom headers nếu cần
-	for key, value := range headers {
-		w.Header()[key] = value
-	}
+	// Add custom headers
+	maps.Copy(w.Header(), headers)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -25,12 +24,14 @@ func WriteResponseJSON(w http.ResponseWriter, status int, data any, headers http
 	return nil
 }
 
-// 3. Helper để gửi lỗi (Error Response)
+// Helper to write standard error response
 func ErrorResponse(w http.ResponseWriter, status int, message string) {
-	env := dto.APIResponse{Status: "error", Message: message, Data: nil} // Standard format: {"error": "..."}
+	env := dto.APIResponse{
+		Status:  "error",
+		Message: message,
+		Data:    nil,
+	}
 
-	// Có thể log lỗi ở đây nếu là lỗi 500
-	// log.Println(message)
-
+	// Note: You can add 500 error logging here if needed
 	WriteResponseJSON(w, status, env, nil)
 }

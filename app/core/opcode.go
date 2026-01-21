@@ -2,18 +2,18 @@ package core
 
 import "fmt"
 
-// These are the "Syscalls" your VM understands.
+// VM Instructions (Opcodes)
 const (
 	// --- Data Movement ---
-	OP_LOAD_IMM = 0x01 // [Reg] [Value] -> Nạp số vào Reg
-	OP_MOV      = 0x02 // [Dest] [Src]  -> Copy giá trị Reg -> Reg
+	OP_LOAD_IMM = 0x01 // [Reg] [Value] -> Load value into Reg
+	OP_MOV      = 0x02 // [Dest] [Src]  -> Copy Reg value to Reg
 
 	// --- Arithmetic ---
 	OP_ADD = 0x10 // [Dest] [Src]
 	OP_SUB = 0x11 // [Dest] [Src]
 	OP_MUL = 0x12 // [Dest] [Src]
-	OP_DIV = 0x13 // [Dest] [Src] -> Checks zero division
-	OP_MOD = 0x14 // [Dest] [Src] -> Checks zero division
+	OP_DIV = 0x13 // [Dest] [Src] -> Checks for zero division
+	OP_MOD = 0x14 // [Dest] [Src] -> Checks for zero division
 
 	// --- Logic ---
 	OP_AND = 0x20 // [Dest] [Src]
@@ -29,29 +29,29 @@ const (
 	OP_JLT = 0x35 // [0] [Addr]    -> Jump if Flag == -1 (Less)
 
 	// --- IO & System ---
-	OP_PRINT_INT = 0xEE // [Reg] [0] -> In số
-	OP_PRINT_STR = 0xF0 // [Reg] [0] -> In chuỗi từ địa chỉ (Pointer) trong Reg
-	OP_HALT      = 0xFF // Dừng
+	OP_PRINT_INT = 0xEE // [Reg] [0] -> Print integer
+	OP_PRINT_STR = 0xF0 // [Reg] [0] -> Print string from memory pointer
+	OP_HALT      = 0xFF // Stop execution
 )
 
 var OpCostTable = map[byte]int{
-	// Data (Rẻ nhất)
+	// Data (Cheap)
 	OP_LOAD_IMM: 2,
 	OP_MOV:      2,
 
-	// Arithmetic (Trung bình)
+	// Arithmetic (Medium)
 	OP_ADD: 3,
 	OP_SUB: 3,
-	OP_MUL: 5, // Nhân thường tốn hơn cộng
-	OP_DIV: 5, // Chia tốn hơn
+	OP_MUL: 5,
+	OP_DIV: 5,
 	OP_MOD: 5,
 
-	// Logic (Rẻ)
+	// Logic (Cheap)
 	OP_AND: 3,
 	OP_OR:  3,
 	OP_XOR: 3,
 
-	// Control Flow (Rất rẻ để khuyến khích logic)
+	// Control Flow (Very cheap)
 	OP_CMP: 2,
 	OP_JMP: 1,
 	OP_JEQ: 1,
@@ -59,34 +59,32 @@ var OpCostTable = map[byte]int{
 	OP_JGT: 1,
 	OP_JLT: 1,
 
-	// IO & System (Đắt nhất - Heavy Operations)
-	OP_PRINT_INT: 10, // Syscall IO
-	OP_PRINT_STR: 20, // Syscall IO + Memory Scan loop
+	// IO & System (Expensive)
+	OP_PRINT_INT: 10,
+	OP_PRINT_STR: 20,
 	OP_HALT:      0,
 }
 
 const MaxComputeCycle = 100
 
-// Module 2: Static Analysis - Tính toán Cost trước khi chạy
+// Module 2: Static Analysis - Calculate Cost before running
 func EstimateComputeCost(program []byte) (int, error) {
 	totalCost := 0
-	// Quét qua toàn bộ binary code
+	// Scan the binary code
 	for i := 0; i < len(program); {
 		op := program[i]
 
-		// 1. Cộng cost dựa trên bảng giá
+		// 1. Add cost from table
 		if cost, ok := OpCostTable[op]; ok {
 			totalCost += cost
 		} else {
-			// Gặp opcode lạ -> Báo lỗi ngay, đỡ tốn công chạy VM
+			// Return error if opcode is unknown
 			return 0, fmt.Errorf("invalid opcode detected: 0x%X", op)
 		}
 
-		// 2. Nhảy index (vì kiến trúc ta là [OP] [ARG] - 2 bytes)
-		// Lưu ý: Static analysis đơn giản này giả định code chạy tuần tự.
-		// Với code có loop phức tạp, cost thực tế sẽ cao hơn.
-		// Nhưng đây là bước lọc "Pre-flight" rất tốt.
-		i += 2
+		// 2. Skip to next instruction
+		// NOTE: Changed to 3 because instruction format is [OP] [ARG1] [ARG2]
+		i += 3
 	}
 	return totalCost, nil
 }

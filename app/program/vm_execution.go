@@ -5,7 +5,7 @@ import (
 	"svm_whiteboard/app/internal/core"
 )
 
-// Custom Error Type để trả về PC khi lỗi
+// VMError includes the Program Counter (PC) for debugging
 type VMError struct {
 	PC      int
 	Message string
@@ -18,8 +18,8 @@ func (e *VMError) Error() string {
 type VM struct {
 	Registers [4]int     // R0, R1, R2, R3
 	Memory    [1024]byte // Heap Memory (For Strings)
-	HeapPtr   int        // Con trỏ quản lý bộ nhớ (Heap Pointer)
-	Flag      int        // Trạng thái so sánh (-1: <, 0: =, 1: >)
+	HeapPtr   int        // Pointer to next free memory address
+	Flag      int        // Comparison flag (-1: <, 0: =, 1: >)
 	Program   []byte
 	PC        int
 	Output    []string
@@ -29,21 +29,21 @@ func NewVM(code []byte) *VM {
 	return &VM{
 		Program: code,
 		PC:      0,
-		HeapPtr: 0, // Bộ nhớ bắt đầu từ 0
+		HeapPtr: 0,
 		Output:  []string{},
 	}
 }
 
-// Helper: Lấy giá trị R1 (Thường dùng để lấy kết quả trả về sau khi chạy)
+// Helper: Get value of R1 (usually the return value)
 func (vm *VM) GetRegister1() int {
 	return vm.Registers[0]
 }
 
-// Helper: Cấp phát bộ nhớ cho String và trả về địa chỉ (Pointer)
-// Dùng function này khi muốn nạp sẵn dữ liệu String vào Memory trước khi Run()
+// Helper: Allocate string to heap and return its address
+// Used to pre-load data into memory before Run()
 func (vm *VM) MallocString(content string) (int, error) {
 	bytes := []byte(content)
-	// Kiểm tra tràn bộ nhớ
+	// Check for heap overflow
 	if vm.HeapPtr+len(bytes)+1 > len(vm.Memory) {
 		return -1, fmt.Errorf("Out of Memory (Heap Overflow)")
 	}
@@ -51,16 +51,16 @@ func (vm *VM) MallocString(content string) (int, error) {
 	startAddr := vm.HeapPtr
 	copy(vm.Memory[startAddr:], bytes)
 
-	// Thêm Null Terminator (0) để đánh dấu hết chuỗi
+	// Add Null Terminator (0)
 	vm.Memory[startAddr+len(bytes)] = 0
 
-	// Cập nhật con trỏ Heap
+	// Update Heap Pointer
 	vm.HeapPtr += len(bytes) + 1
 
 	return startAddr, nil
 }
 
-// Helper: Đọc an toàn từ Memory
+// Helper: Safely read a byte from Memory
 func (vm *VM) ReadMem(addr int) (byte, error) {
 	if addr < 0 || addr >= len(vm.Memory) {
 		return 0, fmt.Errorf("Segmentation Fault (Access Addr %d)", addr)
@@ -74,8 +74,7 @@ func (vm *VM) ReadMem(addr int) (byte, error) {
 func (vm *VM) Run() ([]string, error) {
 	vm.Output = append(vm.Output, "--- VM STARTED ---")
 
-	// Safety: Max Cycle Loop để tránh treo máy nếu user code bị loop vô hạn
-	// Mặc dù ta đã có EstimateCost, nhưng đó chỉ là tĩnh. Loop động vẫn cần cái này.
+	// Safety: Max cycle limit to prevent infinite loops
 	cycles := 0
 	maxCycles := 1000
 
@@ -85,10 +84,10 @@ func (vm *VM) Run() ([]string, error) {
 		}
 		cycles++
 
-		// 1. Safety Check: Instruction Bounds
-		// Mỗi lệnh dài 3 byte: [OP] [ARG1] [ARG2]
+		// Safety Check: Instruction Bounds
+		// Each instruction is 3 bytes: [OP] [ARG1] [ARG2]
 		if vm.PC+2 >= len(vm.Program) {
-			// Nếu lệnh cuối cùng là HALT và nằm sát vách file thì cho qua
+			// Allow HALT if it is the last byte
 			if vm.Program[vm.PC] == core.OP_HALT {
 				break
 			}
@@ -96,10 +95,10 @@ func (vm *VM) Run() ([]string, error) {
 		}
 
 		op := vm.Program[vm.PC]
-		p1 := int(vm.Program[vm.PC+1]) // Register Index hoặc Value
-		p2 := int(vm.Program[vm.PC+2]) // Register Index hoặc Value
+		p1 := int(vm.Program[vm.PC+1]) // Register Index or Value
+		p2 := int(vm.Program[vm.PC+2]) // Register Index or Value
 
-		// Helper lấy giá trị Register an toàn (cho các lệnh READ)
+		// Helper to safely access registers
 		regVal := func(idx int) int {
 			if idx >= 0 && idx < 4 {
 				return vm.Registers[idx]
@@ -121,7 +120,7 @@ func (vm *VM) Run() ([]string, error) {
 			}
 			vm.Registers[p1] = regVal(p2)
 
-		// --- ARITHMETIC (Có check lỗi) ---
+		// --- ARITHMETIC (With error checks) ---
 		case core.OP_ADD:
 			vm.Registers[p1] += regVal(p2)
 		case core.OP_SUB:
@@ -184,16 +183,15 @@ func (vm *VM) Run() ([]string, error) {
 
 		// --- IO (String & Int) ---
 		case core.OP_PRINT_INT:
-			// In giá trị của Register p1
 			vm.Output = append(vm.Output, fmt.Sprintf(">> INT: %d", regVal(p1)))
 
 		case core.OP_PRINT_STR:
-			// Lấy địa chỉ từ Register p1 -> Đọc Heap
+			// Get address from p1 -> Read from Heap
 			addr := regVal(p1)
 			var strBuf []byte
 			currAddr := addr
 
-			// Quét bộ nhớ cho đến khi gặp Null Terminator (0)
+			// Read memory until Null Terminator (0)
 			for {
 				b, err := vm.ReadMem(currAddr)
 				if err != nil {
@@ -205,7 +203,7 @@ func (vm *VM) Run() ([]string, error) {
 				strBuf = append(strBuf, b)
 				currAddr++
 
-				// Safety break để tránh in quá dài hoặc bị loop vô tận trong memory
+				// Safety break to prevent long output or loops
 				if len(strBuf) > 128 {
 					strBuf = append(strBuf, []byte("...[TRUNCATED]")...)
 					break
@@ -216,7 +214,7 @@ func (vm *VM) Run() ([]string, error) {
 		case core.OP_HALT:
 			return vm.Output, nil
 
-		// Bỏ qua NOOP hoặc Padding
+		// Skip NOOP or Padding
 		case 0x00:
 			// Do nothing
 
@@ -224,7 +222,7 @@ func (vm *VM) Run() ([]string, error) {
 			return vm.Output, &VMError{vm.PC, fmt.Sprintf("Illegal Opcode 0x%X", op)}
 		}
 
-		// Nhảy sang lệnh tiếp theo (3 bytes)
+		// Move to next instruction (3 bytes)
 		vm.PC += 3
 	}
 	return vm.Output, nil
@@ -237,10 +235,10 @@ func (vm *VM) Run() ([]string, error) {
 func LoadStrictParams(vm *VM, p1 interface{}, p2 interface{}) error {
 	inputs := []interface{}{p1, p2}
 
-	// Loop qua 2 input để nạp vào R0 và R1
+	// Load inputs into R0 and R1
 	for i, val := range inputs {
 		if val == nil {
-			// Nếu null thì mặc định là 0
+			// Default to 0 if null
 			vm.Registers[i] = 0
 			continue
 		}
@@ -248,7 +246,7 @@ func LoadStrictParams(vm *VM, p1 interface{}, p2 interface{}) error {
 		switch v := val.(type) {
 		case float64: // JSON Number
 			vm.Registers[i] = int(v)
-		case string: // JSON String -> Heap
+		case string: // JSON String (store in Heap)
 			addr, err := vm.MallocString(v)
 			if err != nil {
 				return err

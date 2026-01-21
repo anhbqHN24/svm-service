@@ -18,8 +18,8 @@ func main() {
 
 	// 3. Define Routes
 	http.HandleFunc("GET /read/{address}", server.HandleGetAccount)
-	http.HandleFunc("/write", server.HandleWriteAccount)
-	http.HandleFunc("/execute", server.HandleInteract)
+	http.HandleFunc("POST /write", server.HandleWriteAccount)
+	http.HandleFunc("POST /execute", server.HandleInteract)
 
 	// 4. Start
 	port := ":9924"

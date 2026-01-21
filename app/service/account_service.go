@@ -4,13 +4,13 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
-	"svm_whiteboard/app/api/helper"
 	"svm_whiteboard/app/core"
 	"svm_whiteboard/app/dto"
 	"svm_whiteboard/app/program"
+	"svm_whiteboard/helper"
 	"svm_whiteboard/runtime"
 
-	"github.com/labyla/borsh-go"
+	"github.com/near/borsh-go"
 )
 
 func ReadAccount(svm *runtime.SVMMemoryManager, addr string) (*core.Account, error) {

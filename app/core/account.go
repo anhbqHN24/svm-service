@@ -14,13 +14,12 @@ func ToAddressPtr(a Address) *Address {
 type Account struct {
 	Lamports   uint64     `json:"lamports"`
 	Data       []byte     `json:"data"`
-	Owner      *Address   `json:"owner"`      // what got the right to interact with account
+	Owner      *Address   `json:"owner"`      // The program that owns this account
 	Executable bool       `json:"executable"` // True = Program, False = Data Account
-	_          [7]byte    // Padding (Explicit or Compiler-added for alignment)
-	Mu         sync.Mutex `json:"-"` // NEW: Fine-grained Lock. Dùng để khoá riêng account này khi đang có transaction ghi vào.
+	Mu         sync.Mutex `json:"-"`          // Mutex to lock this account during write operations
 }
 
-// Helper to print data neatly at JSON response
+// Helper to format account data for JSON responses
 type AccountView struct {
 	*Account
 	DataHex string `json:"data_hex"`
