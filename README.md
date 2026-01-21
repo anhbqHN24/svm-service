@@ -18,7 +18,7 @@ The project follows a simple structure:
 - **`app/api/`**: Handles HTTP requests (read, write, execute).
 - **`runtime/`**: Manages the Memory and Accounts (VM In-memory like simulation).
 - **`app/program/`**: The Virtual Machine (VM) that runs bytecode.
-- **`app/core/`**: Basic model definitions (Opcodes, Account types, etc,...).
+- **`app/model/`**: Basic model definitions (Opcodes, Account types, etc,...).
 
 ## 🚀 How to Run
 
@@ -39,7 +39,7 @@ The project follows a simple structure:
     ```Bash
     go run cmd/server.go
     ```
-Server runs on port :9924
+Server runs on port ```:9924```
 
 ## 📖 How to Use
 1. **Read an Account (GET)**

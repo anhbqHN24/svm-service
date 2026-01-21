@@ -4,8 +4,8 @@ import (
 	"encoding/binary"
 	"net/http"
 	"svm_whiteboard/app/api"
-	"svm_whiteboard/app/core"
 	"svm_whiteboard/app/dto"
+	"svm_whiteboard/app/model"
 	"svm_whiteboard/app/program"
 	"svm_whiteboard/app/service"
 	"svm_whiteboard/helper"
@@ -24,7 +24,7 @@ func (s *Server) HandleGetAccount(w http.ResponseWriter, r *http.Request) {
 		api.ErrorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	api.WriteResponseJSON(w, http.StatusOK, dto.APIResponse{Status: "success", Data: core.NewAccountView(result)}, nil)
+	api.WriteResponseJSON(w, http.StatusOK, dto.APIResponse{Status: "success", Data: model.NewAccountView(result)}, nil)
 }
 
 // POST /write (Create Account)
@@ -40,7 +40,7 @@ func (s *Server) HandleWriteAccount(w http.ResponseWriter, r *http.Request) {
 		api.ErrorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	api.WriteResponseJSON(w, http.StatusCreated, dto.APIResponse{Status: "success", Data: core.NewAccountView(result)}, nil)
+	api.WriteResponseJSON(w, http.StatusCreated, dto.APIResponse{Status: "success", Data: model.NewAccountView(result)}, nil)
 }
 
 // POST /execute
@@ -58,13 +58,13 @@ func (s *Server) HandleInteract(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Estimate computation cost of program binary
-	estimatedCost, err := core.EstimateComputeCost(progAcc.Data)
+	estimatedCost, err := model.EstimateComputeCost(progAcc.Data)
 	if err != nil {
 		api.ErrorResponse(w, http.StatusBadRequest, "Bad Bytecode: "+err.Error())
 		return
 	}
 
-	if estimatedCost > core.MaxComputeCycle {
+	if estimatedCost > model.MaxComputeCycle {
 		api.ErrorResponse(w, http.StatusBadRequest, "Bytecode Compute Budget Exceeded")
 		return
 	}
@@ -145,7 +145,7 @@ func (s *Server) HandleInteract(w http.ResponseWriter, r *http.Request) {
 	}, nil)
 }
 
-func handleVMExecution(progAcc *core.Account, param1 any, param2 any) (*program.VM, []string, error) {
+func handleVMExecution(progAcc *model.Account, param1 any, param2 any) (*program.VM, []string, error) {
 	vm := program.NewVM(progAcc.Data)
 	// Load exactly 2 params from struct into R0, R1
 	if err := program.LoadStrictParams(vm, param1, param2); err != nil {

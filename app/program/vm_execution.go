@@ -2,7 +2,7 @@ package program
 
 import (
 	"fmt"
-	"svm_whiteboard/app/internal/core"
+	"svm_whiteboard/app/model"
 )
 
 // VMError includes the Program Counter (PC) for debugging
@@ -88,7 +88,7 @@ func (vm *VM) Run() ([]string, error) {
 		// Each instruction is 3 bytes: [OP] [ARG1] [ARG2]
 		if vm.PC+2 >= len(vm.Program) {
 			// Allow HALT if it is the last byte
-			if vm.Program[vm.PC] == core.OP_HALT {
+			if vm.Program[vm.PC] == model.OP_HALT {
 				break
 			}
 			return vm.Output, &VMError{vm.PC, "Unexpected End of Program"}
@@ -108,46 +108,46 @@ func (vm *VM) Run() ([]string, error) {
 
 		switch op {
 		// --- DATA ---
-		case core.OP_LOAD_IMM:
+		case model.OP_LOAD_IMM:
 			if p1 < 0 || p1 > 3 {
 				return vm.Output, &VMError{vm.PC, "Invalid Register Index"}
 			}
 			vm.Registers[p1] = p2
 
-		case core.OP_MOV:
+		case model.OP_MOV:
 			if p1 < 0 || p1 > 3 {
 				return vm.Output, &VMError{vm.PC, "Invalid Dest Register"}
 			}
 			vm.Registers[p1] = regVal(p2)
 
 		// --- ARITHMETIC (With error checks) ---
-		case core.OP_ADD:
+		case model.OP_ADD:
 			vm.Registers[p1] += regVal(p2)
-		case core.OP_SUB:
+		case model.OP_SUB:
 			vm.Registers[p1] -= regVal(p2)
-		case core.OP_MUL:
+		case model.OP_MUL:
 			vm.Registers[p1] *= regVal(p2)
-		case core.OP_DIV:
+		case model.OP_DIV:
 			if regVal(p2) == 0 {
 				return vm.Output, &VMError{vm.PC, "Division By Zero"}
 			}
 			vm.Registers[p1] /= regVal(p2)
-		case core.OP_MOD:
+		case model.OP_MOD:
 			if regVal(p2) == 0 {
 				return vm.Output, &VMError{vm.PC, "Modulo By Zero"}
 			}
 			vm.Registers[p1] %= regVal(p2)
 
 		// --- LOGIC ---
-		case core.OP_AND:
+		case model.OP_AND:
 			vm.Registers[p1] &= regVal(p2)
-		case core.OP_OR:
+		case model.OP_OR:
 			vm.Registers[p1] |= regVal(p2)
-		case core.OP_XOR:
+		case model.OP_XOR:
 			vm.Registers[p1] ^= regVal(p2)
 
 		// --- CONTROL FLOW ---
-		case core.OP_CMP:
+		case model.OP_CMP:
 			v1, v2 := regVal(p1), regVal(p2)
 			if v1 == v2 {
 				vm.Flag = 0
@@ -157,35 +157,35 @@ func (vm *VM) Run() ([]string, error) {
 				vm.Flag = -1
 			}
 
-		case core.OP_JMP:
+		case model.OP_JMP:
 			vm.PC = p2
 			continue // Skip PC increment
-		case core.OP_JEQ:
+		case model.OP_JEQ:
 			if vm.Flag == 0 {
 				vm.PC = p2
 				continue
 			}
-		case core.OP_JNE:
+		case model.OP_JNE:
 			if vm.Flag != 0 {
 				vm.PC = p2
 				continue
 			}
-		case core.OP_JGT:
+		case model.OP_JGT:
 			if vm.Flag == 1 {
 				vm.PC = p2
 				continue
 			}
-		case core.OP_JLT:
+		case model.OP_JLT:
 			if vm.Flag == -1 {
 				vm.PC = p2
 				continue
 			}
 
 		// --- IO (String & Int) ---
-		case core.OP_PRINT_INT:
+		case model.OP_PRINT_INT:
 			vm.Output = append(vm.Output, fmt.Sprintf(">> INT: %d", regVal(p1)))
 
-		case core.OP_PRINT_STR:
+		case model.OP_PRINT_STR:
 			// Get address from p1 -> Read from Heap
 			addr := regVal(p1)
 			var strBuf []byte
@@ -211,7 +211,7 @@ func (vm *VM) Run() ([]string, error) {
 			}
 			vm.Output = append(vm.Output, fmt.Sprintf(">> STRING: %s", string(strBuf)))
 
-		case core.OP_HALT:
+		case model.OP_HALT:
 			return vm.Output, nil
 
 		// Skip NOOP or Padding
