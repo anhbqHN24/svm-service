@@ -13,6 +13,14 @@ import (
 	"github.com/near/borsh-go"
 )
 
+func GetAllAccounts(svm *runtime.SVMMemoryManager) ([]*model.Account, error) {
+	accounts, ok := svm.GetAllAccounts()
+	if !ok {
+		return nil, errors.New("No Accounts Found")
+	}
+	return accounts, nil
+}
+
 func ReadAccount(svm *runtime.SVMMemoryManager, addr string) (*model.Account, error) {
 	acc, ok := svm.GetAccount(model.Address(addr))
 	if !ok {
@@ -34,10 +42,15 @@ func WriteAccount(svm *runtime.SVMMemoryManager, request dto.WriteAccountRequest
 	}
 	newAccountAddress := model.Address(helper.EncodePubKeyToString(pubKey))
 
-	// Serialize Account data using borsh format
-	dataOnChain, err := borsh.Serialize(request.Data)
-	if err != nil {
-		return nil, errors.New(err.Error())
+	var dataOnChain []byte
+
+	if !request.Executable { // Serialize Account data using borsh format
+		dataOnChain, err = borsh.Serialize(request.Data)
+		if err != nil {
+			return nil, errors.New(err.Error())
+		}
+	} else {
+		dataOnChain = request.Data.([]byte)
 	}
 
 	dataAcc := &model.Account{

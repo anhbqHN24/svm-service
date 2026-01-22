@@ -22,6 +22,27 @@ func NewSVMMemoryManager() *SVMMemoryManager {
 	return svm
 }
 
+func (svm *SVMMemoryManager) GetAllAccounts() ([]*model.Account, bool) {
+	var accounts []*model.Account
+
+	// Priority Check: Look in Program Cache first (Lock-free path)
+	svm.ProgramCache.Range(func(key, val any) bool {
+		accounts = append(accounts, val.(*model.Account))
+		return true
+	})
+
+	// 1. Manager Lock (Level 1): just using to FIND pointer
+	svm.DataMu.RLock()
+	defer svm.DataMu.RUnlock()
+	for _, acc := range svm.Accounts {
+		accounts = append(accounts, acc)
+	}
+	if accounts == nil {
+		return nil, false
+	}
+	return accounts, true
+}
+
 func (svm *SVMMemoryManager) GetAccount(addr model.Address) (*model.Account, bool) {
 	// Priority Check: Look in Program Cache first (Lock-free path)
 	if val, ok := svm.ProgramCache.Load(addr); ok {
@@ -36,6 +57,8 @@ func (svm *SVMMemoryManager) GetAccount(addr model.Address) (*model.Account, boo
 }
 
 func (svm *SVMMemoryManager) SetAccount(addr model.Address, acc *model.Account) {
+	// Assigned Account Address to Key field of Account struct
+	acc.Key = addr
 	// 1. Account is program: using "Write-Once, Read-Many (WORM)" strategy, allow parallel reading without mutex lock
 	if acc.Executable {
 		svm.ProgramCache.Store(addr, acc)

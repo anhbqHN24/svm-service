@@ -28,6 +28,9 @@ const (
 	OP_JGT = 0x34 // [0] [Addr]    -> Jump if Flag == 1 (Greater)
 	OP_JLT = 0x35 // [0] [Addr]    -> Jump if Flag == -1 (Less)
 
+	// --- String Operations ---
+	OP_CONCAT = 0x40 // [DestReg] [SrcReg] -> Concatenate strings from SrcReg to DestReg
+
 	// --- IO & System ---
 	OP_PRINT_INT = 0xEE // [Reg] [0] -> Print integer
 	OP_PRINT_STR = 0xF0 // [Reg] [0] -> Print string from memory pointer
@@ -59,11 +62,20 @@ var OpCostTable = map[byte]int{
 	OP_JGT: 1,
 	OP_JLT: 1,
 
+	// String Operations (Expensive)
+	OP_CONCAT: 15, // high cost due to alloc memory operations
+
 	// IO & System (Expensive)
 	OP_PRINT_INT: 10,
 	OP_PRINT_STR: 20,
 	OP_HALT:      0,
 }
+
+// --- TYPE SYSTEM ---
+const (
+	TYPE_INT = 0 // Register contain Integer value
+	TYPE_STR = 1 // Register contain String value
+)
 
 const MaxComputeCycle = 100
 
@@ -72,7 +84,15 @@ func EstimateComputeCost(program []byte) (int, error) {
 	totalCost := 0
 	// Scan the binary code
 	for i := 0; i < len(program); {
+		if i+3 > len(program) {
+			break
+		}
 		op := program[i]
+
+		if op == 0x00 {
+			i += 3 // Bỏ qua block này (Padding)
+			continue
+		}
 
 		// 1. Add cost from table
 		if cost, ok := OpCostTable[op]; ok {

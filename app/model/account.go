@@ -12,6 +12,7 @@ func ToAddressPtr(a Address) *Address {
 }
 
 type Account struct {
+	Key        Address    `json:"key"`
 	Lamports   uint64     `json:"lamports"`
 	Data       []byte     `json:"data"`
 	Owner      *Address   `json:"owner"`      // The program that owns this account
@@ -30,4 +31,12 @@ func NewAccountView(acc *Account) AccountView {
 		Account: acc,
 		DataHex: hex.EncodeToString(acc.Data),
 	}
+}
+
+func NewAccountViews(accs []*Account) []AccountView {
+	views := make([]AccountView, len(accs))
+	for i, acc := range accs {
+		views[i] = NewAccountView(acc)
+	}
+	return views
 }

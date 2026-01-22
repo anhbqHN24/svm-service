@@ -9,7 +9,7 @@ import (
 
 // Helper to write JSON response
 func WriteResponseJSON(w http.ResponseWriter, status int, data any, headers http.Header) error {
-	js, err := json.Marshal(data)
+	val, err := json.Marshal(data)
 	if err != nil {
 		return err
 	}
@@ -19,7 +19,7 @@ func WriteResponseJSON(w http.ResponseWriter, status int, data any, headers http
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	w.Write(js)
+	w.Write(val)
 
 	return nil
 }

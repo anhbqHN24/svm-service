@@ -16,6 +16,15 @@ type Server struct {
 	SVMMemoryManager *runtime.SVMMemoryManager
 }
 
+func (s *Server) HandleGetAllAccounts(w http.ResponseWriter, r *http.Request) {
+	result, err := service.GetAllAccounts(s.SVMMemoryManager)
+	if err != nil {
+		api.ErrorResponse(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	api.WriteResponseJSON(w, http.StatusOK, dto.APIResponse{Status: "success", Data: model.NewAccountViews(result)}, nil)
+}
+
 // GET /read
 func (s *Server) HandleGetAccount(w http.ResponseWriter, r *http.Request) {
 	addr := r.PathValue("address")
