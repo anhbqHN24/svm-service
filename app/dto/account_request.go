@@ -16,3 +16,7 @@ type WriteAccountRequest struct {
 	Data       any           `json:"data"`
 	Executable bool          `json:"executable"`
 }
+
+type CompileCodeRequest struct {
+	SourceCode string `json:"source_code"`
+}

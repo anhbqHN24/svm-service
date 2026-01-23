@@ -1,10 +1,7 @@
 package helper
 
 import (
-	"bytes"
-	"encoding/binary"
 	"encoding/json"
-	"fmt"
 	"math/big"
 	"net/http"
 )
@@ -41,29 +38,6 @@ func EncodePubKeyToString(pubKey []byte) string {
 	}
 
 	return string(result)
-}
-
-func ConvertToBytes(input interface{}) ([]byte, error) {
-	switch v := input.(type) {
-	case string:
-		return []byte(v), nil
-	case float64: // Handle JSON numbers (default to float64)
-		buf := new(bytes.Buffer)
-		err := binary.Write(buf, binary.LittleEndian, int32(v))
-		return buf.Bytes(), err
-	case []interface{}: // Handle JSON arrays (e.g., [1, 2, 255])
-		byteArray := make([]byte, len(v))
-		for i, val := range v {
-			if num, ok := val.(float64); ok {
-				byteArray[i] = byte(num)
-			} else {
-				return nil, fmt.Errorf("invalid byte array content")
-			}
-		}
-		return byteArray, nil
-	default:
-		return nil, fmt.Errorf("unsupported data type")
-	}
 }
 
 // Generic helper to parse JSON body into a struct

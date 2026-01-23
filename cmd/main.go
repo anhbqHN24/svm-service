@@ -24,6 +24,7 @@ func main() {
 	mux.HandleFunc("GET /read/{address}", server.HandleGetAccount)
 	mux.HandleFunc("POST /write", server.HandleWriteAccount)
 	mux.HandleFunc("POST /execute", server.HandleInteract)
+	mux.HandleFunc("POST /compile", server.HandleCompileCode)
 
 	// 4. Start
 	port := ":9924"

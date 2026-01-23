@@ -118,14 +118,17 @@ func (vm *VM) Run() ([]string, error) {
 		case model.OP_ADD:
 			vm.Registers[p1] += regVal(p2)
 			vm.RegTypes[p1] = model.TYPE_INT
+			vm.Output = append(vm.Output, ">> ADD executed: R"+fmt.Sprint(p1)+" = "+fmt.Sprint(vm.Registers[p1]))
 
 		case model.OP_SUB:
 			vm.Registers[p1] -= regVal(p2)
 			vm.RegTypes[p1] = model.TYPE_INT
+			vm.Output = append(vm.Output, ">> SUB executed: R"+fmt.Sprint(p1)+" = "+fmt.Sprint(vm.Registers[p1]))
 
 		case model.OP_MUL:
 			vm.Registers[p1] *= regVal(p2)
 			vm.RegTypes[p1] = model.TYPE_INT
+			vm.Output = append(vm.Output, ">> MUL executed: R"+fmt.Sprint(p1)+" = "+fmt.Sprint(vm.Registers[p1]))
 
 		case model.OP_DIV:
 			if regVal(p2) == 0 {
@@ -133,20 +136,29 @@ func (vm *VM) Run() ([]string, error) {
 			}
 			vm.Registers[p1] /= regVal(p2)
 			vm.RegTypes[p1] = model.TYPE_INT
+			vm.Output = append(vm.Output, ">> DIV executed: R"+fmt.Sprint(p1)+" = "+fmt.Sprint(vm.Registers[p1]))
 
 		case model.OP_MOD:
 			if regVal(p2) == 0 {
 				return vm.Output, &VMError{vm.PC, "Modulo By Zero"}
 			}
 			vm.Registers[p1] %= regVal(p2)
+			vm.RegTypes[p1] = model.TYPE_INT
+			vm.Output = append(vm.Output, ">> MOD executed: R"+fmt.Sprint(p1)+" = "+fmt.Sprint(vm.Registers[p1]))
 
 		// --- LOGIC ---
 		case model.OP_AND:
 			vm.Registers[p1] &= regVal(p2)
+			vm.RegTypes[p1] = model.TYPE_INT
+			vm.Output = append(vm.Output, ">> AND executed: R"+fmt.Sprint(p1)+" = "+fmt.Sprint(vm.Registers[p1]))
 		case model.OP_OR:
 			vm.Registers[p1] |= regVal(p2)
+			vm.RegTypes[p1] = model.TYPE_INT
+			vm.Output = append(vm.Output, ">> OR executed: R"+fmt.Sprint(p1)+" = "+fmt.Sprint(vm.Registers[p1]))
 		case model.OP_XOR:
 			vm.Registers[p1] ^= regVal(p2)
+			vm.RegTypes[p1] = model.TYPE_INT
+			vm.Output = append(vm.Output, ">> XOR executed: R"+fmt.Sprint(p1)+" = "+fmt.Sprint(vm.Registers[p1]))
 
 		// --- CONTROL FLOW ---
 		case model.OP_CMP:
@@ -158,28 +170,34 @@ func (vm *VM) Run() ([]string, error) {
 			} else {
 				vm.Flag = -1
 			}
+			vm.Output = append(vm.Output, ">> CMP executed: Flag = "+fmt.Sprint(vm.Flag))
 
 		case model.OP_JMP:
 			vm.PC = p2
+			vm.Output = append(vm.Output, ">> JMP executed: PC = "+fmt.Sprint(vm.PC))
 			continue // Skip PC increment
 		case model.OP_JEQ:
 			if vm.Flag == 0 {
 				vm.PC = p2
+				vm.Output = append(vm.Output, ">> JEQ executed: PC = "+fmt.Sprint(vm.PC))
 				continue
 			}
 		case model.OP_JNE:
 			if vm.Flag != 0 {
 				vm.PC = p2
+				vm.Output = append(vm.Output, ">> JNE executed: PC = "+fmt.Sprint(vm.PC))
 				continue
 			}
 		case model.OP_JGT:
 			if vm.Flag == 1 {
 				vm.PC = p2
+				vm.Output = append(vm.Output, ">> JGT executed: PC = "+fmt.Sprint(vm.PC))
 				continue
 			}
 		case model.OP_JLT:
 			if vm.Flag == -1 {
 				vm.PC = p2
+				vm.Output = append(vm.Output, ">> JLT executed: PC = "+fmt.Sprint(vm.PC))
 				continue
 			}
 
@@ -208,6 +226,7 @@ func (vm *VM) Run() ([]string, error) {
 			// 5. Lưu kết quả vào P1
 			vm.Registers[p1] = newPtr
 			vm.RegTypes[p1] = model.TYPE_STR
+			vm.Output = append(vm.Output, ">> CONCAT executed: R"+fmt.Sprint(p1)+" = "+newStr)
 
 		// --- IO (String & Int) ---
 		case model.OP_PRINT_INT:
@@ -243,6 +262,7 @@ func (vm *VM) Run() ([]string, error) {
 			vm.Output = append(vm.Output, fmt.Sprintf(">> STRING: %s", string(strBuf)))
 
 		case model.OP_HALT:
+			vm.Output = append(vm.Output, ">> HALT encountered. Stopping execution.")
 			return vm.Output, nil
 
 		// Skip NOOP or Padding
