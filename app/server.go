@@ -6,7 +6,6 @@ import (
 	"svm_whiteboard/app/api"
 	"svm_whiteboard/app/dto"
 	"svm_whiteboard/app/model"
-	"svm_whiteboard/app/program"
 	"svm_whiteboard/app/service"
 	"svm_whiteboard/helper"
 	"svm_whiteboard/runtime"
@@ -86,18 +85,4 @@ func (s *Server) HandleCompileCode(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", "attachment; filename=program.bin")
 
 	http.ServeContent(w, r, "program.bin", time.Now(), reader)
-}
-
-func handleVMExecution(progAcc *model.Account, param1 any, param2 any) (*program.VM, []string, error) {
-	vm := program.NewVM(progAcc.Data)
-	// Load exactly 2 params from struct into R0, R1
-	if err := program.LoadStrictParams(vm, param1, param2); err != nil {
-		return nil, nil, err
-	}
-	// 4. Run VM program execution & return logs
-	logs, err := vm.Run()
-	if err != nil {
-		return nil, nil, err
-	}
-	return vm, logs, nil
 }

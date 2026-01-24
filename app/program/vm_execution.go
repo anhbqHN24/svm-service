@@ -1,11 +1,11 @@
 package program
 
 import (
+	"encoding/binary"
 	"fmt"
 	"svm_whiteboard/app/model"
 )
 
-// VMError includes the Program Counter (PC) for debugging
 type VMError struct {
 	PC      int
 	Message string
@@ -16,14 +16,17 @@ func (e *VMError) Error() string {
 }
 
 type VM struct {
-	Registers [4]int     // R0, R1, R2, R3
-	RegTypes  [4]byte    // Type of data in each register (int or string pointer)
-	Memory    [1024]byte // Heap Memory (For Strings)
-	HeapPtr   int        // Pointer to next free memory address
-	Flag      int        // Comparison flag (-1: <, 0: =, 1: >)
-	Program   []byte
-	PC        int
-	Output    []string
+	Registers [4]int  // Scratchpad registers (R0, R1, R2, R3)
+	RegTypes  [4]byte // Type tracking for registers
+
+	Stack [1024]int // Stack Memory: place to store local variables
+
+	Memory  [1024]byte // Heap Memory: for dynamic string allocation
+	HeapPtr int
+	Flag    int
+	Program []byte
+	PC      int
+	Output  []string
 }
 
 func NewVM(code []byte) *VM {
@@ -32,137 +35,159 @@ func NewVM(code []byte) *VM {
 		PC:      0,
 		HeapPtr: 0,
 		Output:  []string{},
+		// Stack & Registers auto-initialized to 0
 	}
 }
 
-// Helper: Get value of R1 (usually the return value)
+// Get Register 0 (Return value)
 func (vm *VM) GetRegister1() int {
 	return vm.Registers[0]
 }
 
-// Helper: Allocate string to heap and return its address
-// Used to pre-load data into memory before Run()
 func (vm *VM) MallocString(content string) (int, error) {
 	bytes := []byte(content)
-	// Check for heap overflow
 	if vm.HeapPtr+len(bytes)+1 > len(vm.Memory) {
 		return -1, fmt.Errorf("Out of Memory (Heap Overflow)")
 	}
-
 	startAddr := vm.HeapPtr
 	copy(vm.Memory[startAddr:], bytes)
-
-	// Add Null Terminator (0)
-	vm.Memory[startAddr+len(bytes)] = 0
-
-	// Update Heap Pointer
+	vm.Memory[startAddr+len(bytes)] = 0 // Null terminator
 	vm.HeapPtr += len(bytes) + 1
-
 	return startAddr, nil
 }
 
-// Helper: Safely read a byte from Memory
 func (vm *VM) ReadMem(addr int) (byte, error) {
 	if addr < 0 || addr >= len(vm.Memory) {
-		return 0, fmt.Errorf("Segmentation Fault (Access Addr %d)", addr)
+		return 0, fmt.Errorf("Segfault %d", addr)
 	}
 	return vm.Memory[addr], nil
 }
 
 // ==========================================
-// 4. CORE EXECUTION LOOP
+// CORE EXECUTION LOOP
 // ==========================================
 func (vm *VM) Run() ([]string, error) {
 	vm.Output = append(vm.Output, "--- VM STARTED ---")
 
 	for vm.PC < len(vm.Program) {
-		// Safety Check: Instruction Bounds
-		// Each instruction is 3 bytes: [OP] [ARG1] [ARG2]
+		op := vm.Program[vm.PC]
+
+		// 1. VARIABLE LENGTH INSTRUCTION (LOAD_STR)
+		if op == model.OP_LOAD_STR {
+			if vm.PC+2 >= len(vm.Program) {
+				return vm.Output, &VMError{vm.PC, "Unexpected EOF"}
+			}
+			dest := vm.Program[vm.PC+1]
+			strLen := int(vm.Program[vm.PC+2])
+
+			if vm.PC+3+strLen > len(vm.Program) {
+				return vm.Output, &VMError{vm.PC, "EOF reading string"}
+			}
+			content := string(vm.Program[vm.PC+3 : vm.PC+3+strLen])
+
+			// Alloc & Store Ptr to Register
+			ptr, err := vm.MallocString(content)
+			if err != nil {
+				return vm.Output, &VMError{vm.PC, err.Error()}
+			}
+
+			vm.Registers[dest] = ptr
+			vm.RegTypes[dest] = model.TYPE_STR
+			vm.Output = append(vm.Output, fmt.Sprintf(">> LOAD_STR R%d = \"%s\"", dest, content))
+
+			// Debug log (Optional)
+			// vm.Output = append(vm.Output, fmt.Sprintf(">> LOAD_STR R%d = \"%s\"", dest, content))
+
+			vm.PC += 3 + strLen
+			continue
+		}
+
+		// 2. STACK OPS (4 Bytes)
+		if op == model.OP_LOAD || op == model.OP_STORE {
+			if vm.PC+3 >= len(vm.Program) {
+				return vm.Output, &VMError{vm.PC, "Unexpected EOF"}
+			}
+			reg := vm.Program[vm.PC+1]
+			addrIdx := binary.BigEndian.Uint16(vm.Program[vm.PC+2 : vm.PC+4])
+
+			if int(addrIdx) >= len(vm.Stack) {
+				return vm.Output, &VMError{vm.PC, "Stack Overflow"}
+			}
+
+			if op == model.OP_LOAD {
+				// Stack -> Register
+				vm.Registers[reg] = vm.Stack[addrIdx]
+				// Giả sử type từ Stack luôn valid (Simple model: coi như INT hoặc PTR đều là số)
+				// Để chính xác hơn cần StackTypes[] nhưng ta tạm bỏ qua cho gọn
+				vm.RegTypes[reg] = model.TYPE_INT
+				// Nếu giá trị > 0 và nằm trong Heap range thì có thể là STR, nhưng ta cứ để INT
+				// Runtime check lúc PRINT sẽ lo.
+			} else {
+				// Register -> Stack
+				vm.Stack[addrIdx] = vm.Registers[reg]
+			}
+			vm.PC += 4
+			continue
+		}
+
+		// 3. STANDARD OPS (3 Bytes)
 		if vm.PC+2 >= len(vm.Program) {
-			// Allow HALT if it is the last byte
-			if vm.Program[vm.PC] == model.OP_HALT {
+			if op == model.OP_HALT {
+				vm.Output = append(vm.Output, ">> HALT encountered")
 				break
 			}
-			return vm.Output, &VMError{vm.PC, "Unexpected End of Program"}
+			return vm.Output, &VMError{vm.PC, "Unexpected End"}
 		}
+		p1, p2 := int(vm.Program[vm.PC+1]), int(vm.Program[vm.PC+2])
 
-		op := vm.Program[vm.PC]
-		p1 := int(vm.Program[vm.PC+1]) // Register Index or Value
-		p2 := int(vm.Program[vm.PC+2]) // Register Index or Value
-
-		// Helper to safely access registers
-		regVal := func(idx int) int {
-			if idx >= 0 && idx < 4 {
-				return vm.Registers[idx]
-			}
-			return 0
-		}
+		getReg := func(i int) int { return vm.Registers[i] }
 
 		switch op {
-		// --- DATA ---
 		case model.OP_LOAD_IMM:
-			if p1 < 0 || p1 > 3 {
-				return vm.Output, &VMError{vm.PC, "Invalid Register Index"}
-			}
 			vm.Registers[p1] = p2
-			vm.RegTypes[p1] = model.TYPE_INT // [UPDATE] Load số -> Type là INT
+			vm.RegTypes[p1] = model.TYPE_INT
+			vm.Output = append(vm.Output, fmt.Sprintf(">> LOAD_IMM R%d = %d", p1, p2))
 
 		case model.OP_MOV:
-			if p1 < 0 || p1 > 3 {
-				return vm.Output, &VMError{vm.PC, "Invalid Dest Register"}
-			}
-			vm.Registers[p1] = regVal(p2)
+			vm.Registers[p1] = getReg(p2)
 			vm.RegTypes[p1] = vm.RegTypes[p2]
+			vm.Output = append(vm.Output, fmt.Sprintf(">> MOV R%d = R%d (%d)", p1, p2, getReg(p2)))
 
-		// --- ARITHMETIC (With error checks) ---
+		// --- ARITHMETIC ---
+
 		case model.OP_ADD:
-			vm.Registers[p1] += regVal(p2)
+			vm.Registers[p1] += getReg(p2)
 			vm.RegTypes[p1] = model.TYPE_INT
-			vm.Output = append(vm.Output, ">> ADD executed: R"+fmt.Sprint(p1)+" = "+fmt.Sprint(vm.Registers[p1]))
-
+			vm.Output = append(vm.Output, fmt.Sprintf(">> ADD R%d += R%d (%d)", p1, p2, getReg(p2)))
 		case model.OP_SUB:
-			vm.Registers[p1] -= regVal(p2)
+			vm.Registers[p1] -= getReg(p2)
 			vm.RegTypes[p1] = model.TYPE_INT
-			vm.Output = append(vm.Output, ">> SUB executed: R"+fmt.Sprint(p1)+" = "+fmt.Sprint(vm.Registers[p1]))
-
+			vm.Output = append(vm.Output, fmt.Sprintf(">> SUB R%d -= R%d (%d)", p1, p2, getReg(p2)))
 		case model.OP_MUL:
-			vm.Registers[p1] *= regVal(p2)
+			vm.Registers[p1] *= getReg(p2)
 			vm.RegTypes[p1] = model.TYPE_INT
-			vm.Output = append(vm.Output, ">> MUL executed: R"+fmt.Sprint(p1)+" = "+fmt.Sprint(vm.Registers[p1]))
-
+			vm.Output = append(vm.Output, fmt.Sprintf(">> MUL R%d *= R%d (%d)", p1, p2, getReg(p2)))
 		case model.OP_DIV:
-			if regVal(p2) == 0 {
-				return vm.Output, &VMError{vm.PC, "Division By Zero"}
+			if v := getReg(p2); v == 0 {
+				return vm.Output, &VMError{vm.PC, "Div By Zero"}
+			} else {
+				vm.Registers[p1] /= v
+				vm.RegTypes[p1] = model.TYPE_INT
+				vm.Output = append(vm.Output, fmt.Sprintf(">> DIV R%d /= R%d (%d)", p1, p2, v))
 			}
-			vm.Registers[p1] /= regVal(p2)
-			vm.RegTypes[p1] = model.TYPE_INT
-			vm.Output = append(vm.Output, ">> DIV executed: R"+fmt.Sprint(p1)+" = "+fmt.Sprint(vm.Registers[p1]))
-
 		case model.OP_MOD:
-			if regVal(p2) == 0 {
-				return vm.Output, &VMError{vm.PC, "Modulo By Zero"}
+			if v := getReg(p2); v == 0 {
+				return vm.Output, &VMError{vm.PC, "Mod By Zero"}
+			} else {
+				vm.Registers[p1] %= v
+				vm.RegTypes[p1] = model.TYPE_INT
+				vm.Output = append(vm.Output, fmt.Sprintf(">> MOD R%d %%= R%d (%d)", p1, p2, v))
 			}
-			vm.Registers[p1] %= regVal(p2)
-			vm.RegTypes[p1] = model.TYPE_INT
-			vm.Output = append(vm.Output, ">> MOD executed: R"+fmt.Sprint(p1)+" = "+fmt.Sprint(vm.Registers[p1]))
 
-		// --- LOGIC ---
-		case model.OP_AND:
-			vm.Registers[p1] &= regVal(p2)
-			vm.RegTypes[p1] = model.TYPE_INT
-			vm.Output = append(vm.Output, ">> AND executed: R"+fmt.Sprint(p1)+" = "+fmt.Sprint(vm.Registers[p1]))
-		case model.OP_OR:
-			vm.Registers[p1] |= regVal(p2)
-			vm.RegTypes[p1] = model.TYPE_INT
-			vm.Output = append(vm.Output, ">> OR executed: R"+fmt.Sprint(p1)+" = "+fmt.Sprint(vm.Registers[p1]))
-		case model.OP_XOR:
-			vm.Registers[p1] ^= regVal(p2)
-			vm.RegTypes[p1] = model.TYPE_INT
-			vm.Output = append(vm.Output, ">> XOR executed: R"+fmt.Sprint(p1)+" = "+fmt.Sprint(vm.Registers[p1]))
+		// --- COMPARISON & JUMP ---
 
-		// --- CONTROL FLOW ---
 		case model.OP_CMP:
-			v1, v2 := regVal(p1), regVal(p2)
+			v1, v2 := getReg(p1), getReg(p2)
 			if v1 == v2 {
 				vm.Flag = 0
 			} else if v1 > v2 {
@@ -170,143 +195,102 @@ func (vm *VM) Run() ([]string, error) {
 			} else {
 				vm.Flag = -1
 			}
-			vm.Output = append(vm.Output, ">> CMP executed: Flag = "+fmt.Sprint(vm.Flag))
+			vm.Output = append(vm.Output, fmt.Sprintf(">> CMP R%d (%d) vs R%d (%d) => Flag=%d", p1, v1, p2, v2, vm.Flag))
 
 		case model.OP_JMP:
 			vm.PC = p2
-			vm.Output = append(vm.Output, ">> JMP executed: PC = "+fmt.Sprint(vm.PC))
-			continue // Skip PC increment
+			vm.Output = append(vm.Output, fmt.Sprintf(">> JMP to %d", p2))
+			continue
 		case model.OP_JEQ:
 			if vm.Flag == 0 {
 				vm.PC = p2
-				vm.Output = append(vm.Output, ">> JEQ executed: PC = "+fmt.Sprint(vm.PC))
+				vm.Output = append(vm.Output, fmt.Sprintf(">> JEQ to %d", p2))
 				continue
 			}
 		case model.OP_JNE:
 			if vm.Flag != 0 {
 				vm.PC = p2
-				vm.Output = append(vm.Output, ">> JNE executed: PC = "+fmt.Sprint(vm.PC))
+				vm.Output = append(vm.Output, fmt.Sprintf(">> JNE to %d", p2))
 				continue
 			}
 		case model.OP_JGT:
 			if vm.Flag == 1 {
 				vm.PC = p2
-				vm.Output = append(vm.Output, ">> JGT executed: PC = "+fmt.Sprint(vm.PC))
+				vm.Output = append(vm.Output, fmt.Sprintf(">> JGT to %d", p2))
 				continue
 			}
 		case model.OP_JLT:
 			if vm.Flag == -1 {
 				vm.PC = p2
-				vm.Output = append(vm.Output, ">> JLT executed: PC = "+fmt.Sprint(vm.PC))
+				vm.Output = append(vm.Output, fmt.Sprintf(">> JLT to %d", p2))
 				continue
 			}
 
-		// --- STRING OPERATIONS ---
 		case model.OP_CONCAT:
-			str1, err := vm.GetStringVal(p1)
+			str1, _ := vm.GetStringVal(p1)
+			str2, _ := vm.GetStringVal(p2)
+			newPtr, err := vm.MallocString(str1 + str2)
 			if err != nil {
 				return vm.Output, &VMError{vm.PC, err.Error()}
 			}
-
-			// 2. Lấy String từ P2 (Tự động nhận biết Int/Ptr)
-			str2, err := vm.GetStringVal(p2)
-			if err != nil {
-				return vm.Output, &VMError{vm.PC, err.Error()}
-			}
-
-			// 3. Ghép chuỗi
-			newStr := str1 + str2
-
-			// 4. Cấp phát vùng nhớ mới
-			newPtr, err := vm.MallocString(newStr)
-			if err != nil {
-				return vm.Output, &VMError{vm.PC, err.Error()}
-			}
-
-			// 5. Lưu kết quả vào P1
 			vm.Registers[p1] = newPtr
 			vm.RegTypes[p1] = model.TYPE_STR
-			vm.Output = append(vm.Output, ">> CONCAT executed: R"+fmt.Sprint(p1)+" = "+newStr)
+			vm.Output = append(vm.Output, fmt.Sprintf(">> CONCAT R%d = \"%s\" + \"%s\"", p1, str1, str2))
 
-		// --- IO (String & Int) ---
+		// --- IO & SYSTEM ---
+
 		case model.OP_PRINT_INT:
-			vm.Output = append(vm.Output, fmt.Sprintf(">> INT: %d", regVal(p1)))
+			// Smart Print: Check type thật sự
+			// Note: Sau khi LOAD từ Stack, type có thể bị mất (default INT).
+			// Nếu muốn smart print hoàn hảo, cần lưu type vào StackTypes.
+			// Nhưng ở đây ta check tạm: Nếu opcode là PRINT_INT nhưng user muốn in chuỗi?
+			// Ta cho phép user dùng PRINT (Compiler map về OP_PRINT_INT).
+			val := vm.Registers[p1]
+			// Heuristic: Nếu val là địa chỉ hợp lệ trong heap và trỏ đến string -> In string?
+			// Nhưng rủi ro. Ta cứ in INT. Nếu muốn in string dùng hàm GetStringVal logic.
+			// Ở đây ta dùng logic đơn giản:
+			vm.Output = append(vm.Output, fmt.Sprintf(">> OUT: %d", val))
 
 		case model.OP_PRINT_STR:
-			if vm.RegTypes[p1] != model.TYPE_STR {
-				return vm.Output, &VMError{vm.PC, "Invalid String Pointer"}
+			// Đây là opcode dành riêng in string
+			str, err := vm.GetStringVal(p1)
+			if err != nil {
+				return vm.Output, &VMError{vm.PC, err.Error()}
 			}
-			// Get address from p1 -> Read from Heap
-			addr := regVal(p1)
-			var strBuf []byte
-			currAddr := addr
-
-			// Read memory until Null Terminator (0)
-			for {
-				b, err := vm.ReadMem(currAddr)
-				if err != nil {
-					return vm.Output, &VMError{vm.PC, err.Error()}
-				}
-				if b == 0 {
-					break // Null terminator
-				}
-				strBuf = append(strBuf, b)
-				currAddr++
-
-				// Safety break to prevent long output or loops
-				if len(strBuf) > 128 {
-					strBuf = append(strBuf, []byte("...[TRUNCATED]")...)
-					break
-				}
-			}
-			vm.Output = append(vm.Output, fmt.Sprintf(">> STRING: %s", string(strBuf)))
+			vm.Output = append(vm.Output, fmt.Sprintf(">> OUT: %s", str))
 
 		case model.OP_HALT:
-			vm.Output = append(vm.Output, ">> HALT encountered. Stopping execution.")
+			vm.Output = append(vm.Output, ">> HALT encountered")
 			return vm.Output, nil
-
-		// Skip NOOP or Padding
-		case 0x00:
-			// Do nothing
-
-		default:
-			return vm.Output, &VMError{vm.PC, fmt.Sprintf("Illegal Opcode 0x%X", op)}
 		}
-
-		// Move to next instruction (3 bytes)
 		vm.PC += 3
 	}
 	return vm.Output, nil
 }
 
 // ==========================================
-// 5. INPUT PARSING (API LAYER)
+// INPUT PARSING
 // ==========================================
 
 func LoadStrictParams(vm *VM, p1 interface{}, p2 interface{}) error {
 	inputs := []interface{}{p1, p2}
-
+	// [IMPORTANT] Params được load vào STACK[0] và STACK[1]
 	for i, val := range inputs {
 		if val == nil {
-			vm.Registers[i] = 0
-			vm.RegTypes[i] = model.TYPE_INT // Default
+			vm.Stack[i] = 0
 			continue
 		}
-
 		switch v := val.(type) {
-		case float64: // JSON Number
-			vm.Registers[i] = int(v)
-			vm.RegTypes[i] = model.TYPE_INT // Flag as INT
-		case string: // JSON String
+		case float64:
+			vm.Stack[i] = int(v)
+		case int:
+			vm.Stack[i] = v
+		case string:
 			addr, err := vm.MallocString(v)
 			if err != nil {
 				return err
 			}
-			vm.Registers[i] = addr
-			vm.RegTypes[i] = model.TYPE_STR // Flag as STRING
-		case int:
-			vm.Registers[i] = v
-			vm.RegTypes[i] = model.TYPE_INT // Flag as INT
+			vm.Stack[i] = addr
 		default:
 			return fmt.Errorf("param_%d invalid type", i+1)
 		}
@@ -314,43 +298,31 @@ func LoadStrictParams(vm *VM, p1 interface{}, p2 interface{}) error {
 	return nil
 }
 
-// Read string from memory heap given starting address
 func (vm *VM) ReadString(addr int) (string, error) {
 	if addr < 0 || addr >= len(vm.Memory) {
-		return "", fmt.Errorf("segfault: invalid memory access at %d", addr)
+		return "", fmt.Errorf("Invalid Mem Access")
 	}
 	var strBuf []byte
-	currAddr := addr
+	curr := addr
 	for {
-		if currAddr >= len(vm.Memory) {
+		if curr >= len(vm.Memory) {
 			break
 		}
-		b := vm.Memory[currAddr]
+		b := vm.Memory[curr]
 		if b == 0 {
 			break
-		} // Null terminator
+		}
 		strBuf = append(strBuf, b)
-		currAddr++
-		if len(strBuf) > 128 {
+		curr++
+		if len(strBuf) > 256 {
 			break
-		} // Limit độ dài
+		} // Safety
 	}
 	return string(strBuf), nil
 }
 
-// Helper: Lấy giá trị chuỗi của Register bất kỳ (Tự parse Int/String)
 func (vm *VM) GetStringVal(regIdx int) (string, error) {
-	if regIdx < 0 || regIdx > 3 {
-		return "", fmt.Errorf("invalid register index")
-	}
-
 	val := vm.Registers[regIdx]
-	typeVal := vm.RegTypes[regIdx]
-
-	if typeVal == model.TYPE_STR {
-		// Nếu là Pointer -> Đọc từ Heap
-		return vm.ReadString(val)
-	}
-	// Nếu là Int -> Convert sang string
-	return fmt.Sprintf("%d", val), nil
+	// Nếu gọi hàm này, ta assume user muốn đọc nó như string
+	return vm.ReadString(val)
 }

@@ -7,6 +7,9 @@ const (
 	// --- Data Movement ---
 	OP_LOAD_IMM = 0x01 // [Reg] [Value] -> Load value into Reg
 	OP_MOV      = 0x02 // [Dest] [Src]  -> Copy Reg value to Reg
+	OP_LOAD_STR = 0x05 // [Reg] [StrID] -> Load string from Heap to Reg
+	OP_LOAD     = 0x06 // [Reg] [Addr] -> Load from Stack to Reg
+	OP_STORE    = 0x07 // [Reg] [Addr] -> Store from Reg to Stack
 
 	// --- Arithmetic ---
 	OP_ADD = 0x10 // [Dest] [Src]
@@ -41,6 +44,9 @@ var OpCostTable = map[byte]int{
 	// Data (Cheap)
 	OP_LOAD_IMM: 2,
 	OP_MOV:      2,
+	OP_LOAD:     5, // Memory access cost
+	OP_STORE:    5, // Memory access cost
+	OP_LOAD_STR: 5, // String operation cost
 
 	// Arithmetic (Medium)
 	OP_ADD: 3,
@@ -77,34 +83,48 @@ const (
 	TYPE_STR = 1 // Register contain String value
 )
 
-const MaxComputeCycle = 100
+const MaxComputeCycle = 2000
 
 // Module 2: Static Analysis - Calculate Cost before running
 func EstimateComputeCost(program []byte) (int, error) {
 	totalCost := 0
+	pc := 0
+	lenProg := len(program)
 	// Scan the binary code
-	for i := 0; i < len(program); {
-		if i+3 > len(program) {
-			break
-		}
-		op := program[i]
-
+	for pc < lenProg {
+		op := program[pc]
 		if op == 0x00 {
-			i += 3 // Bỏ qua block này (Padding)
+			pc++
 			continue
-		}
+		} // Skip padding
 
-		// 1. Add cost from table
 		if cost, ok := OpCostTable[op]; ok {
 			totalCost += cost
 		} else {
-			// Return error if opcode is unknown
-			return 0, fmt.Errorf("invalid opcode detected: 0x%X", op)
+			return 0, fmt.Errorf("invalid opcode detected: 0x%X at PC %d", op, pc)
 		}
 
-		// 2. Skip to next instruction
-		// NOTE: Changed to 3 because instruction format is [OP] [ARG1] [ARG2]
-		i += 3
+		// Move PC according to instruction format
+		switch op {
+		case OP_LOAD_STR:
+			// [OP] [Dest] [Len] [Bytes...]
+			if pc+3 > lenProg {
+				return 0, fmt.Errorf("EOF at PC %d", pc)
+			}
+			strLen := int(program[pc+2])
+			pc += 3 + strLen
+
+		case OP_LOAD, OP_STORE:
+			// [OP] [Reg] [AddrHi] [AddrLo] -> 4 bytes
+			pc += 4
+
+		case OP_HALT:
+			return totalCost, nil
+
+		default:
+			// Standard 3 bytes: [OP] [ARG1] [ARG2]
+			pc += 3
+		}
 	}
 	return totalCost, nil
 }
