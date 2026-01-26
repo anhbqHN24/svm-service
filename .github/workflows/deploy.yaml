@@ -19,9 +19,9 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd ~/svm-whiteboard/backend
+            cd ~/svm-whiteboard/svm-service
             git pull origin main
             cd ../
-            sudo docker compose up -d --build backend
+            sudo docker compose up -d --build svm-service
             sudo docker system prune -a -f
-            sudo docker compose ps backend
+            sudo docker compose ps svm-service
