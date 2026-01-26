@@ -1,22 +1,27 @@
-FROM golang:1.24-alpine as builder
+# Stage 1: Build stage
+FROM golang:1.24-alpine AS builder
+RUN apk add --no-cache git
 
 WORKDIR /src
+
 COPY go.sum go.mod ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/svm-service .
 
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/svm-service ./cmd/main.go
+
+# Stage 2: Final stage (Runtime)
 FROM alpine:3.21.3
 
-RUN mkdir /app
+RUN apk add --no-cache ca-certificates tzdata
 
-WORKDIR /app 
-COPY --from=builder /bin/svm-service /app/svm-service
-COPY settings settings
-COPY bin bin
+WORKDIR /app
 
-RUN chmod +x /app/svm-service bin/*
+COPY --from=builder /app/svm-service .
+
+RUN chmod +x ./svm-service
+
 EXPOSE 9924
-CMD ["bin/start_app.sh"]
 
+CMD ["./svm-service"]
