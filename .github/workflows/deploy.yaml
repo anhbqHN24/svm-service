@@ -1,0 +1,27 @@
+name: Deploy to server
+
+on:
+  push:
+    branches:
+      - develop
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/svm-whiteboard/backend
+            git pull origin main
+            cd ../
+            sudo docker compose up -d --build backend
+            sudo docker system prune -a -f
+            sudo docker compose ps backend
