@@ -43,7 +43,7 @@ Server runs on port ```:9924```
 
 ## 📖 How to Use
 1. **Read an Account (GET)**
-Check the terminal logs for the Genesis Account Structure after starting the server.
+Get Account State (JSON object containing Account metadata) from Account Address
     ```Bash
     curl http://localhost:9924/read/{GENESIS_ACCOUNT_ADDRESS}
     ```
