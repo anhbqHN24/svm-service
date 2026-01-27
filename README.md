@@ -9,7 +9,7 @@
 🔗 **Slides:** [Project Introduction Slideshow](https://docs.google.com/presentation/d/1ltbNwZAnafnMy9UtMbuVjRLkNS0z7ARLzaD6FXHyi8Y/view?usp=sharing)
 
 ## 🏗 Architecture
-<img width="1236" height="755" alt="Screenshot 2026-01-20 at 8 24 33 PM" src="https://github.com/user-attachments/assets/88a10191-5e11-4434-8558-efee1f997407" />
+<img width="560" height="591" alt="Screenshot 2026-01-27 at 10 00 13 AM" src="https://github.com/user-attachments/assets/26f8e709-3e6c-4f3e-909e-d3004eceb4db" />
 
 
 The project follows a simple structure:
