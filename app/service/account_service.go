@@ -3,17 +3,15 @@ package service
 import (
 	"crypto/ed25519"
 	"crypto/rand"
-	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"svm_whiteboard/app/compiler"
 	"svm_whiteboard/app/dto"
 	"svm_whiteboard/app/model"
 	"svm_whiteboard/app/program"
 	"svm_whiteboard/helper"
 	"svm_whiteboard/runtime"
-
-	"github.com/near/borsh-go"
 )
 
 func GetAllAccounts(svm *runtime.SVMMemoryManager) ([]*model.Account, error) {
@@ -62,7 +60,7 @@ func WriteAccount(svm *runtime.SVMMemoryManager, request dto.WriteAccountRequest
 		}
 	} else {
 		// Logic for Data Account (Serialize via Borsh)
-		dataOnChain, err = borsh.Serialize(request.Data)
+		dataOnChain, err = helper.SerializePrimitive(request.Data)
 		if err != nil {
 			return nil, errors.New(err.Error())
 		}
@@ -107,65 +105,93 @@ func ExecuteAccount(svm *runtime.SVMMemoryManager, request dto.ExecuteAccountReq
 		vm   *program.VM
 		logs []string
 	)
-	// --- STEP 2: Retrieve Data Account & OWNERSHIP CHECK (Module 1) ---
-	if request.DataAddr != "" {
-		dataAcc, ok := svm.GetAccount(request.DataAddr)
-		if !ok {
-			return nil, errors.New("Invalid Data Account Address")
-		}
 
-		// Check Ownership: Is the Program the Owner of this Data Account?
-		if dataAcc.Owner != &request.ProgAddr {
-			return nil, errors.New("Invalid Account Owner")
-		}
+	paramsToLoad := []dto.ExecuteParam{request.Params.Param1, request.Params.Param2}
 
-		// --- STEP 3: ATOMIC LOCKING (Lock 2 Accounts) ---
-		// To prevent Deadlocks (e.g., A locks X waiting for Y, B locks Y waiting for X),
-		// we always lock in Address order (lowest to highest).
+	// --- STEP 2: Load Params into VM Stack/Heap ---
+	for i, p := range paramsToLoad {
+		switch p.Type {
+		case helper.PARAM_TYPE_PRIMITIVE: // Primitive (int hoặc string)
+			if valStr, ok := p.Value.(string); ok {
+				// Nếu là string, nạp vào Heap và đưa con trỏ vào Stack
+				p.Value = valStr
+			} else if valNum, ok := p.Value.(float64); ok {
+				// JSON unmarshal thường coi số là float64
+				p.Value = int(valNum)
+			} else {
+				return nil, fmt.Errorf("param_%d: unsupported primitive type", i+1)
+			}
 
-		// Lock sorting logic
-		firstLock, secondLock := &progAcc.Mu, &dataAcc.Mu
-		if request.ProgAddr > request.DataAddr {
-			firstLock, secondLock = &dataAcc.Mu, &progAcc.Mu
-		}
+		case helper.PARAM_TYPE_ADDRESS: // Address (Data Account)
+			addrStr, ok := p.Value.(string)
+			if !ok {
+				return nil, fmt.Errorf("param_%d: address must be a string", i+1)
+			}
+			// read data account from SVM
+			dataAcc, ok := svm.GetAccount(model.Address(addrStr))
+			if !ok {
+				return nil, fmt.Errorf("data account %s not found", addrStr)
+			}
+			// set account field for later use
+			p.Account = dataAcc
 
-		firstLock.Lock()  // Lock Program Account
-		secondLock.Lock() // Lock Data Account
+			// Check Ownership: Is the Program the Owner of this Data Account?
+			if dataAcc.Owner != &request.ProgAddr {
+				return nil, errors.New("Invalid Account Ownership for address: " + string(p.Account.Key))
+			}
 
-		// Use defer to ensure unlocking when function ends (even on panic)
-		defer secondLock.Unlock()
-		defer firstLock.Unlock()
+			// --- STEP 3: ATOMIC LOCKING (Lock 2 Accounts) ---
+			// To prevent Deadlocks (e.g., A locks X waiting for Y, B locks Y waiting for X),
+			// we always lock in Address order (lowest to highest).
 
-		// --- STEP 4: EXECUTE VM ---
-		// Simulation: Load old data from Data Account into Register 2
-		currentVal := int(0)
-		if len(dataAcc.Data) >= 4 {
-			currentVal = int(binary.LittleEndian.Uint32(dataAcc.Data))
-		}
+			// Lock sorting logic
+			firstLock, secondLock := &progAcc.Mu, &dataAcc.Mu
+			if request.ProgAddr > model.Address(addrStr) {
+				firstLock, secondLock = &dataAcc.Mu, &progAcc.Mu
+			}
 
-		vm, logs, err = handleVMExecution(progAcc, request.Params.Param1, currentVal)
-		if err != nil {
-			return nil, err
-		}
+			firstLock.Lock()  // Lock Program Account
+			secondLock.Lock() // Lock Data Account
 
-		// --- STEP 5: UPDATE STATE ---
-		// Get result from R1 after execution to update Data Account
-		newVal := uint32(vm.GetRegister1())
+			// Use defer to ensure unlocking when function ends (even on panic)
+			defer secondLock.Unlock()
+			defer firstLock.Unlock()
 
-		// Overwrite new data into Data Account (Currently Safe Locked)
-		newStateBytes := make([]byte, 4)
-		binary.LittleEndian.PutUint32(newStateBytes, newVal)
-		dataAcc.Data = newStateBytes
-		svm.SetAccount(request.DataAddr, dataAcc)
-	} else {
-		_, logs, err = handleVMExecution(progAcc, request.Params.Param1, request.Params.Param2)
-		if err != nil {
-			return nil, err
+			dataContent, err := helper.DeserializePrimitive(dataAcc.Data)
+			if err != nil {
+				return nil, fmt.Errorf("failed to deserialize data account %s: %v", addrStr, err)
+			}
+			p.Value = dataContent
+
+		default:
+			return nil, fmt.Errorf("invalid param type: %d", p.Type)
 		}
 	}
+
+	vm, logs, err = handleVMExecution(progAcc, request.Params.Param1.Value, request.Params.Param2.Value)
+	if err != nil {
+		return nil, err
+	}
+
+	if request.Params.Param1.Type == helper.PARAM_TYPE_ADDRESS {
+		request.Params.Param1.Account.Data, err = helper.SerializePrimitive(vm.GetStackValue(0))
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize param_1 back to account: %v", err)
+		}
+		svm.SetAccount(request.Params.Param1.Account.Key, request.Params.Param1.Account)
+	}
+	if request.Params.Param2.Type == helper.PARAM_TYPE_ADDRESS {
+		request.Params.Param2.Account.Data, err = helper.SerializePrimitive(vm.GetStackValue(1))
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize param_2 back to account: %v", err)
+		}
+		svm.SetAccount(request.Params.Param2.Account.Key, request.Params.Param2.Account)
+	}
+
+	// --- STEP 4: RETURN RESPONSE ---
+
 	return &dto.ExecuteAccountResponse{
 		ProgAddr:    request.ProgAddr,
-		DataAddr:    request.DataAddr,
 		ComputeCost: estimatedCost,
 		Logs:        logs,
 	}, nil

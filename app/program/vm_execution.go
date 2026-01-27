@@ -29,6 +29,19 @@ type VM struct {
 	Output  []string
 }
 
+func (vm *VM) GetStackValue(i int) any {
+	val := vm.Stack[i]
+	// Heuristic to determine if val is string pointer or int
+	if val >= 0 && val < vm.HeapPtr {
+		// Try read as string
+		str, err := vm.ReadString(val)
+		if err == nil {
+			return str
+		}
+	}
+	return val
+}
+
 func NewVM(code []byte) *VM {
 	return &VM{
 		Program: code,

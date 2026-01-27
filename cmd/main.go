@@ -11,12 +11,11 @@ import (
 
 func main() {
 	// 1. Init Runtime (Engine)
-	SVMMemoryManager := runtime.NewSVMMemoryManager()
-	SVMMemoryManager.InitGenesisAccount()
+	server := &app.Server{
+		SessionStore: make(map[string]*runtime.SVMMemoryManager),
+	}
 
 	// 2. Init Server (API Layer)
-	server := &app.Server{SVMMemoryManager: SVMMemoryManager}
-
 	mux := http.NewServeMux()
 
 	// 3. Define Routes

@@ -9,15 +9,42 @@ import (
 	"svm_whiteboard/app/service"
 	"svm_whiteboard/helper"
 	"svm_whiteboard/runtime"
+	"sync"
 	"time"
 )
 
 type Server struct {
-	SVMMemoryManager *runtime.SVMMemoryManager
+	SessionStore map[string]*runtime.SVMMemoryManager
+	SessionMu    sync.Mutex
+}
+
+func (s *Server) GetMemory(r *http.Request) *runtime.SVMMemoryManager {
+	// 1. Get Session ID from Header (sent by React)
+	sessionID := r.Header.Get("X-Session-ID")
+
+	// If no ID provided, fallback to a "public" shared instance or a default one
+	if sessionID == "" {
+		sessionID = "default_public"
+	}
+
+	s.SessionMu.Lock()
+	defer s.SessionMu.Unlock()
+
+	// 2. Check if memory exists for this user
+	if svm, exists := s.SessionStore[sessionID]; exists {
+		return svm
+	}
+
+	// 3. If not, create a NEW isolated environment
+	newSVM := runtime.NewSVMMemoryManager()
+	newSVM.InitGenesisAccount() // Create their own Genesis account
+	s.SessionStore[sessionID] = newSVM
+
+	return newSVM
 }
 
 func (s *Server) HandleGetAllAccounts(w http.ResponseWriter, r *http.Request) {
-	result, err := service.GetAllAccounts(s.SVMMemoryManager)
+	result, err := service.GetAllAccounts(s.GetMemory(r))
 	if err != nil {
 		api.ErrorResponse(w, http.StatusBadRequest, err.Error())
 		return
@@ -28,7 +55,7 @@ func (s *Server) HandleGetAllAccounts(w http.ResponseWriter, r *http.Request) {
 // GET /read
 func (s *Server) HandleGetAccount(w http.ResponseWriter, r *http.Request) {
 	addr := r.PathValue("address")
-	result, err := service.ReadAccount(s.SVMMemoryManager, addr)
+	result, err := service.ReadAccount(s.GetMemory(r), addr)
 	if err != nil {
 		api.ErrorResponse(w, http.StatusBadRequest, err.Error())
 		return
@@ -44,7 +71,7 @@ func (s *Server) HandleWriteAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := service.WriteAccount(s.SVMMemoryManager, request)
+	result, err := service.WriteAccount(s.GetMemory(r), request)
 	if err != nil {
 		api.ErrorResponse(w, http.StatusBadRequest, err.Error())
 		return
@@ -60,7 +87,7 @@ func (s *Server) HandleInteract(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := service.ExecuteAccount(s.SVMMemoryManager, request)
+	result, err := service.ExecuteAccount(s.GetMemory(r), request)
 	if err != nil {
 		api.ErrorResponse(w, http.StatusBadRequest, err.Error())
 		return
